@@ -37,30 +37,37 @@
             font-size: 14px;
             margin-top: 10px;
         }
+        .subtitle {
+            font-size: 14px;
+            color: #666;
+            margin-top: -10px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
     <h1>Currency Converter</h1>
+    <div class="subtitle">(Rates updated daily)</div>
     <div id="currency-container">
         <div class="currency-row">
             <span class="currency-label">EUR =</span>
-            <input type="text" id="EUR" placeholder="000,000.00">
+            <input type="text" id="EUR" placeholder="000,000.00" inputmode="decimal">
         </div>
         <div class="currency-row">
             <span class="currency-label">RMB =</span>
-            <input type="text" id="RMB" placeholder="000,000.00">
+            <input type="text" id="RMB" placeholder="000,000.00" inputmode="decimal">
         </div>
         <div class="currency-row">
             <span class="currency-label">INR =</span>
-            <input type="text" id="INR" placeholder="000,000.00">
+            <input type="text" id="INR" placeholder="000,000.00" inputmode="decimal">
         </div>
         <div class="currency-row">
             <span class="currency-label">SGD =</span>
-            <input type="text" id="SGD" placeholder="000,000.00">
+            <input type="text" id="SGD" placeholder="000,000.00" inputmode="decimal">
         </div>
         <div class="currency-row">
             <span class="currency-label">USD =</span>
-            <input type="text" id="USD" placeholder="000,000.00">
+            <input type="text" id="USD" placeholder="000,000.00" inputmode="decimal">
         </div>
     </div>
     <div id="error-message" class="error"></div>
@@ -76,23 +83,21 @@
 
         // Add event listeners for each input
         inputs.forEach(input => {
-            // Handle 'Enter' key for conversion
+            // Handle 'Enter' key for laptop and 'Done/Next' for Android
             input.addEventListener('keypress', async function(event) {
                 if (event.key === 'Enter') {
                     const value = parseFloat(input.value.replace(/,/g, ''));
                     if (!isNaN(value)) {
-                        try {
-                            await convertCurrency(input.id, value);
-                            // Set all inputs to result state (yellow background)
-                            inputs.forEach(inp => inp.classList.add('result'));
-                            // Set current input to white background
-                            input.classList.remove('result');
-                            errorMessage.textContent = '';
-                        } catch (error) {
-                            errorMessage.textContent = 'Error fetching exchange rates. Please try again later.';
-                            console.error(error);
-                        }
+                        await performConversion(input.id, value);
                     }
+                }
+            });
+
+            // Handle Android keyboard 'Done/Next' (triggers on blur)
+            input.addEventListener('blur', async function() {
+                const value = parseFloat(input.value.replace(/,/g, ''));
+                if (!isNaN(value)) {
+                    await performConversion(input.id, value);
                 }
             });
 
@@ -110,6 +115,20 @@
                 this.classList.remove('result');
             });
         });
+
+        async function performConversion(sourceCurrency, amount) {
+            try {
+                await convertCurrency(sourceCurrency, amount);
+                // Set all inputs to result state (yellow background)
+                inputs.forEach(inp => inp.classList.add('result'));
+                // Set current input to white background
+                document.getElementById(sourceCurrency).classList.remove('result');
+                errorMessage.textContent = '';
+            } catch (error) {
+                errorMessage.textContent = 'Error fetching exchange rates. Please try again later.';
+                console.error(error);
+            }
+        }
 
         async function convertCurrency(sourceCurrency, amount) {
             // Map RMB to CNY for API compatibility
