@@ -47,7 +47,7 @@
 </head>
 <body>
     <h1>Currency Converter</h1>
-    <div class="subtitle">(Rates updated daily)</div>
+    <div class="subtitle" id="rate-date">(Rates updated daily)</div>
     <div id="currency-container">
         <div class="currency-row">
             <span class="currency-label">EUR =</span>
@@ -73,44 +73,41 @@
     <div id="error-message" class="error"></div>
 
     <script>
-        // API key for ExchangeRate-API (replace with your own)
-        const API_KEY = '69a1af9cdd8d8444ba0732bb';
-        const API_URL = `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/`;
+        // Rates are fetched by GitHub Actions (fetch_rates.py) using a secret API key
+        // and cached in data/rates.json — the API key never appears in this file.
+        let cachedRates = null;   // { EUR, CNY, INR, SGD, USD } all relative to USD
 
-        // Get all input elements
+        async function loadRates() {
+            const resp = await fetch('./data/rates.json?v=' + Date.now());
+            if (!resp.ok) throw new Error('Could not load rates');
+            const data = await resp.json();
+            if (!data.rates) throw new Error('Invalid rates file');
+            cachedRates = data.rates;
+            cachedRates.USD = 1;  // base is USD
+            if (data.last_update) {
+                document.getElementById('rate-date').textContent =
+                    `Rates as of ${data.last_update}`;
+            }
+        }
+
         const inputs = document.querySelectorAll('input[type="text"]');
         const errorMessage = document.getElementById('error-message');
 
-        // Add event listeners for each input
         inputs.forEach(input => {
-            // Handle 'Enter' key for laptop and 'Done/Next' for Android
             input.addEventListener('keypress', async function(event) {
                 if (event.key === 'Enter') {
                     const value = parseFloat(input.value.replace(/,/g, ''));
-                    if (!isNaN(value)) {
-                        await performConversion(input.id, value);
-                    }
+                    if (!isNaN(value)) await performConversion(input.id, value);
                 }
             });
-
-            // Handle Android keyboard 'Done/Next' (triggers on blur)
             input.addEventListener('blur', async function() {
                 const value = parseFloat(input.value.replace(/,/g, ''));
-                if (!isNaN(value)) {
-                    await performConversion(input.id, value);
-                }
+                if (!isNaN(value)) await performConversion(input.id, value);
             });
-
-            // Reset all inputs to empty and white background on click
             input.addEventListener('click', function() {
-                inputs.forEach(inp => {
-                    inp.value = '';
-                    inp.classList.remove('result');
-                });
+                inputs.forEach(inp => { inp.value = ''; inp.classList.remove('result'); });
                 errorMessage.textContent = '';
             });
-
-            // Reset background to white when user starts typing
             input.addEventListener('input', function() {
                 this.classList.remove('result');
             });
@@ -118,55 +115,44 @@
 
         async function performConversion(sourceCurrency, amount) {
             try {
-                await convertCurrency(sourceCurrency, amount);
-                // Set all inputs to result state (yellow background)
+                if (!cachedRates) await loadRates();
+                convertCurrency(sourceCurrency, amount);
                 inputs.forEach(inp => inp.classList.add('result'));
-                // Set current input to white background
                 document.getElementById(sourceCurrency).classList.remove('result');
                 errorMessage.textContent = '';
             } catch (error) {
-                errorMessage.textContent = 'Error fetching exchange rates. Please try again later.';
+                errorMessage.textContent = 'Error loading exchange rates. Please try again later.';
                 console.error(error);
             }
         }
 
-        async function convertCurrency(sourceCurrency, amount) {
-            // Map RMB to CNY for API compatibility
+        function convertCurrency(sourceCurrency, amount) {
             const currencyMap = { RMB: 'CNY', EUR: 'EUR', INR: 'INR', SGD: 'SGD', USD: 'USD' };
-            const apiCurrency = currencyMap[sourceCurrency];
+            const sourceApi = currencyMap[sourceCurrency];
+            const sourceRate = cachedRates[sourceApi];
+            if (!sourceRate) throw new Error('No rate for ' + sourceCurrency);
 
-            // Fetch exchange rates from ExchangeRate-API
-            const response = await fetch(`${API_URL}${apiCurrency}`);
-            if (!response.ok) {
-                throw new Error('Failed to fetch exchange rates');
-            }
-            const data = await response.json();
+            // Convert source amount to USD, then to each target
+            const amountInUSD = amount / sourceRate;
 
-            if (data.result !== 'success') {
-                throw new Error('API error: ' + data['error-type']);
-            }
-
-            const rates = data.conversion_rates;
-
-            // Convert to all other currencies
             Object.keys(currencyMap).forEach(targetCurrency => {
-                const targetApiCurrency = currencyMap[targetCurrency];
-                const rate = rates[targetApiCurrency];
-                const convertedAmount = amount * rate;
-                const formattedAmount = formatNumber(convertedAmount);
-                document.getElementById(targetCurrency).value = formattedAmount;
+                const targetRate = cachedRates[currencyMap[targetCurrency]];
+                const converted = amountInUSD * (targetRate || 1);
+                document.getElementById(targetCurrency).value = formatNumber(converted);
             });
-
-            // Format the source currency input
             document.getElementById(sourceCurrency).value = formatNumber(amount);
         }
 
         function formatNumber(number) {
-            // Format to 000,000.00
             const parts = number.toFixed(2).split('.');
             parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             return parts.join('.');
         }
+
+        // Load rates on page load
+        loadRates().catch(() => {
+            errorMessage.textContent = 'Rates unavailable — enter a value to retry.';
+        });
     </script>
 </body>
 </html>

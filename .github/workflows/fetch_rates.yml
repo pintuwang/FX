@@ -1,0 +1,33 @@
+name: Fetch Exchange Rates
+
+on:
+  schedule:
+    - cron: '0 0 * * *'    # daily at midnight UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch rates
+        env:
+          # Add this secret in: Settings → Secrets and variables → Actions → EXCHANGERATE_API_KEY
+          EXCHANGERATE_API_KEY: ${{ secrets.EXCHANGERATE_API_KEY }}
+        run: python fetch_rates.py
+
+      - name: Commit updated rates
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/rates.json
+          git diff --cached --quiet || git commit -m "chore: update exchange rates [skip ci]"
+          git push
